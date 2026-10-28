@@ -52,3 +52,7 @@ Apache 2.0
 ## Author
 
 Sim Vattanac
+
+## 🌐 Live Demo
+
+Try it without installing: [https://huggingface.co/spaces/vattanac/khmer-id-reader](https://huggingface.co/spaces/vattanac/khmer-id-reader)
