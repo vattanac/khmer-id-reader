@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101312">
+<title>Khmer ID Scan</title>
+<style>
+  :root{
+    --bg:#101312; --panel:#1a1f1e; --line:#2c3331; --ink:#eef2f0;
+    --dim:#9aa7a3; --go:#00e05a; --bad:#ff6b5e; --ok:#63d99a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    -webkit-text-size-adjust:100%}
+  body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .wrap{max-width:560px;margin:0 auto;padding:16px}
+  h1{font-size:19px;margin:4px 0 2px;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:13px;margin:0 0 14px}
+
+  /* the camera stage: a card-shaped cut-out the user lines the ID up with */
+  .stage{position:relative;width:100%;aspect-ratio:1.5852;background:#000;
+    border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+  .stage video,.stage canvas,.stage img{width:100%;height:100%;object-fit:cover;display:block}
+  .guide{position:absolute;inset:0;pointer-events:none}
+  .guide i{position:absolute;width:26px;height:26px;border:3px solid var(--go);
+    filter:drop-shadow(0 0 4px rgba(0,0,0,.7))}
+  .guide i:nth-child(1){top:8%;left:5%;border-right:0;border-bottom:0;border-radius:8px 0 0 0}
+  .guide i:nth-child(2){top:8%;right:5%;border-left:0;border-bottom:0;border-radius:0 8px 0 0}
+  .guide i:nth-child(3){bottom:8%;right:5%;border-left:0;border-top:0;border-radius:0 0 8px 0}
+  .guide i:nth-child(4){bottom:8%;left:5%;border-right:0;border-top:0;border-radius:0 0 0 8px}
+  .guide b{position:absolute;left:5%;right:5%;bottom:14%;height:20%;
+    border:2px dashed rgba(0,224,90,.55);border-radius:4px}
+  .guide span{position:absolute;left:0;right:0;bottom:4%;text-align:center;
+    font-size:11px;letter-spacing:.4px;color:rgba(255,255,255,.75)}
+
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+  button{appearance:none;border:0;border-radius:10px;padding:13px 18px;font-size:16px;
+    font-weight:600;background:var(--go);color:#062b16;min-height:48px}
+  button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+  button:disabled{opacity:.45}
+  label.file{display:inline-flex;align-items:center;justify-content:center;
+    border-radius:10px;padding:13px 18px;font-size:16px;font-weight:600;
+    background:var(--go);color:#062b16;min-height:48px}
+  label.file input{display:none}
+  .msg{font-size:13px;color:var(--dim);margin-top:10px;min-height:20px}
+  .msg.bad{color:var(--bad)} .msg.ok{color:var(--ok)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:14px;margin-top:14px}
+  .f{display:flex;justify-content:space-between;gap:12px;padding:9px 0;
+    border-bottom:1px solid var(--line)}
+  .f:last-child{border-bottom:0}
+  .f .k{color:var(--dim);font-size:12px;flex:0 0 38%}
+  .f .v{flex:1;text-align:right;word-break:break-word}
+  .pill{display:inline-block;font-size:10px;padding:2px 7px;border-radius:99px;
+    border:1px solid var(--line);color:var(--dim);margin-left:6px;vertical-align:middle}
+  .pill.y{color:var(--ok);border-color:rgba(99,217,154,.4)}
+  .pill.n{color:var(--bad);border-color:rgba(255,107,94,.4)}
+  .hidden{display:none}
+  .foot{color:var(--dim);font-size:11px;margin-top:18px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Khmer ID Scan</h1>
+  <p class="sub">Fill the frame with the card, edge to edge. Only what you see inside the
+  frame is captured, so anything left outside it is lost.</p>
+
+  <div class="stage" id="stage">
+    <video id="cam" playsinline muted autoplay class="hidden"></video>
+    <img id="shot" class="hidden" alt="">
+    <div class="guide" id="guide">
+      <i></i><i></i><i></i><i></i>
+      <b></b>
+      <span>MACHINE-READABLE ZONE</span>
+    </div>
+  </div>
+
+  <div class="hidden" id="framePanel">
+    <p class="sub" style="margin:12px 0 6px">Drag the dots onto the card's corners,
+    then read.</p>
+    <canvas id="frameCv" style="width:100%;border-radius:14px;border:1px solid var(--line);
+      touch-action:none;background:#000"></canvas>
+    <div class="row">
+      <button id="readBtn">Read the card</button>
+      <button class="ghost" id="wholeBtn">Use the whole photo</button>
+    </div>
+  </div>
+
+  <div class="row" id="controls">
+    <button id="shutter" class="hidden">Capture</button>
+    <label class="file" id="pick">Take a photo
+      <input type="file" id="file" accept="image/*" capture="environment">
+    </label>
+    <button class="ghost hidden" id="again">Retake</button>
+  </div>
+  <div class="msg" id="msg"></div>
+
+  <div class="card hidden" id="out"></div>
+  <div class="row hidden" id="jsonRow">
+    <button class="ghost" id="copyJson">Copy JSON</button>
+    <button class="ghost" id="showJson">Show JSON</button>
+  </div>
+  <pre class="card hidden" id="raw" style="white-space:pre-wrap;word-break:break-word;
+       font-size:11px;color:var(--dim);max-height:50vh;overflow:auto"></pre>
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let stream = null, shotUrl = null, lastResult = null;
+
+/* A phone browser only grants the camera on a secure page. Over plain http the
+   live preview is impossible, so the page falls back to the phone's own camera
+   app, which takes a better photo anyway - it just cannot show our frame while
+   aiming. */
+const secure = window.isSecureContext;
+
+async function startCam(){
+  if(!secure || !navigator.mediaDevices?.getUserMedia) return false;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:{ ideal:"environment" },
+              width:{ ideal:3840 }, height:{ ideal:2160 } }, audio:false });
+    const v = $("cam");
+    v.srcObject = stream; await v.play();
+    v.classList.remove("hidden");
+    $("shutter").classList.remove("hidden");
+    $("pick").classList.add("hidden");
+    const t = stream.getVideoTracks()[0].getSettings();
+    $("foot").textContent = `camera ${t.width}×${t.height}`;
+    return true;
+  }catch(e){ return false; }
+}
+
+function stopCam(){
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $("cam").classList.add("hidden");
+  $("shutter").classList.add("hidden");
+}
+
+$("shutter").addEventListener("click", () => {
+  const v = $("cam");
+  if(!v.videoWidth) return;
+  // The preview is object-fit:cover inside a card-shaped box, so the sides of
+  // the video are hidden. Capturing the whole frame sent a card that filled
+  // maybe a third of the image, and the machine-readable zone lost most of its
+  // pixels. Capture exactly the region the frame showed.
+  const box = 1.5852, vr = v.videoWidth / v.videoHeight;
+  let sw = v.videoWidth, sh = v.videoHeight;
+  if(vr > box) sw = Math.round(v.videoHeight * box);   // wider: trim the sides
+  else sh = Math.round(v.videoWidth / box);            // taller: trim top and bottom
+  const sx = Math.round((v.videoWidth - sw) / 2), sy = Math.round((v.videoHeight - sh) / 2);
+  const c = document.createElement("canvas");
+  c.width = sw; c.height = sh;
+  c.getContext("2d").drawImage(v, sx, sy, sw, sh, 0, 0, sw, sh);
+  useImage(c.toDataURL("image/jpeg", 0.95), sw, sh);
+  stopCam();
+});
+
+$("file").addEventListener("change", e => {
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const im = new Image();
+    im.onload = () => {
+      // keep the full capture: the machine-readable zone needs every pixel,
+      // and a phone photo of a card is only about 1000 px across the card
+      // even at 12 megapixels
+      const k = Math.min(1, 2600 / Math.max(im.width, im.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+      useImage(c.toDataURL("image/jpeg", 0.95), im.width, im.height);
+    };
+    im.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+  e.target.value = "";
+});
+
+let photo = null, pts = [], drag = -1, view = 1, srcSize = [0, 0];
+
+function useImage(url, w, h){
+  shotUrl = url; srcSize = [w, h];
+  $("shot").classList.add("hidden");
+  $("pick").classList.add("hidden");
+  $("again").classList.remove("hidden");
+  $("out").classList.add("hidden");
+  photo = new Image();
+  photo.onload = () => { $("framePanel").classList.remove("hidden"); detect(); };
+  photo.src = url;
+}
+
+/* ---------- frame ---------- */
+async function detect(){
+  $("msg").textContent = "finding the card\u2026"; $("msg").className = "msg";
+  let quad = null;
+  try{
+    const r = await fetch("/detect", { method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ image: shotUrl, detector: "auto" }) });
+    const j = await r.json();
+    if(j.quad) quad = j.quad;
+    $("msg").textContent = j.method === "none"
+      ? "card not found \u2014 drag the corners onto it"
+      : "check the corners";
+  }catch(e){ $("msg").textContent = "drag the corners onto the card"; }
+  if(!quad) quad = [[0,0],[photo.width-1,0],[photo.width-1,photo.height-1],[0,photo.height-1]];
+  pts = quad.map(p => ({ x:p[0], y:p[1] }));
+  drawFrame();
+}
+
+function drawFrame(){
+  const cv = $("frameCv"), ctx = cv.getContext("2d");
+  view = Math.min(1, 900 / photo.width);
+  cv.width = Math.round(photo.width * view);
+  cv.height = Math.round(photo.height * view);
+  ctx.drawImage(photo, 0, 0, cv.width, cv.height);
+  ctx.fillStyle = "rgba(0,0,0,.35)";
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.save();
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(p.x*view, p.y*view) : ctx.moveTo(p.x*view, p.y*view));
+  ctx.closePath(); ctx.clip();
+  ctx.drawImage(photo, 0, 0, cv.width, cv.height);
+  ctx.restore();
+  ctx.strokeStyle = "#00e05a"; ctx.lineWidth = 3;
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(p.x*view, p.y*view) : ctx.moveTo(p.x*view, p.y*view));
+  ctx.closePath(); ctx.stroke();
+  // big touch targets: a fingertip is far wider than a mouse pointer
+  pts.forEach(p => {
+    ctx.fillStyle = "#fff"; ctx.beginPath();
+    ctx.arc(p.x*view, p.y*view, 15, 0, 7); ctx.fill();
+    ctx.fillStyle = "#00e05a"; ctx.beginPath();
+    ctx.arc(p.x*view, p.y*view, 11, 0, 7); ctx.fill();
+  });
+}
+
+function at(ev){
+  const cv = $("frameCv"), r = cv.getBoundingClientRect();
+  const t = ev.touches ? ev.touches[0] : ev;
+  return { x:(t.clientX - r.left) * (cv.width / r.width) / view,
+           y:(t.clientY - r.top) * (cv.height / r.height) / view };
+}
+function down(ev){
+  const q = at(ev); let best = -1, bd = 1e9;
+  pts.forEach((p, i) => { const d = Math.hypot(p.x-q.x, p.y-q.y); if(d < bd){ bd = d; best = i; } });
+  if(bd < 60 / view){ drag = best; ev.preventDefault(); }
+}
+function move(ev){
+  if(drag < 0) return;
+  ev.preventDefault();
+  const q = at(ev);
+  pts[drag] = { x:Math.max(0, Math.min(photo.width-1, q.x)),
+                y:Math.max(0, Math.min(photo.height-1, q.y)) };
+  drawFrame();
+}
+function up(){ drag = -1; }
+["touchstart","mousedown"].forEach(e => $("frameCv").addEventListener(e, down, {passive:false}));
+["touchmove","mousemove"].forEach(e => $("frameCv").addEventListener(e, move, {passive:false}));
+["touchend","touchcancel","mouseup","mouseleave"].forEach(e => $("frameCv").addEventListener(e, up));
+
+$("wholeBtn").addEventListener("click", () => {
+  pts = [{x:0,y:0},{x:photo.width-1,y:0},
+         {x:photo.width-1,y:photo.height-1},{x:0,y:photo.height-1}];
+  drawFrame();
+});
+
+/* kept for reference: the phone now sends the corners and the server warps.
+   This ran at about a second and a half on a handset. */
+function warpCard(){
+  const W = 1200, H = 757;
+  const tmp = document.createElement("canvas");
+  tmp.width = photo.width; tmp.height = photo.height;
+  const tctx = tmp.getContext("2d");
+  tctx.drawImage(photo, 0, 0);
+  const S = tctx.getImageData(0, 0, photo.width, photo.height).data;
+  const out = document.createElement("canvas");
+  out.width = W; out.height = H;
+  const octx = out.getContext("2d"), D = octx.createImageData(W, H);
+  const [p0, p1, p2, p3] = pts;
+  for(let y = 0; y < H; y++){
+    const v = y / (H - 1);
+    for(let x = 0; x < W; x++){
+      const u = x / (W - 1);
+      // bilinear interpolation between the four corners
+      const ax = p0.x + (p1.x - p0.x) * u, ay = p0.y + (p1.y - p0.y) * u;
+      const bx = p3.x + (p2.x - p3.x) * u, by = p3.y + (p2.y - p3.y) * u;
+      const sx = Math.round(ax + (bx - ax) * v), sy = Math.round(ay + (by - ay) * v);
+      const si = (Math.max(0, Math.min(photo.height-1, sy)) * photo.width
+                + Math.max(0, Math.min(photo.width-1, sx))) * 4;
+      const di = (y * W + x) * 4;
+      D.data[di] = S[si]; D.data[di+1] = S[si+1]; D.data[di+2] = S[si+2]; D.data[di+3] = 255;
+    }
+  }
+  octx.putImageData(D, 0, 0);
+  return out.toDataURL("image/jpeg", 0.95);
+}
+
+$("readBtn").addEventListener("click", () => {
+  $("framePanel").classList.add("hidden");
+  $("shot").src = shotUrl; $("shot").classList.remove("hidden");
+  // send the photo and the corners; the server warps it with OpenCV. Doing
+  // that here was a per-pixel loop over 900,000 pixels and it was the whole
+  // of the wait, the read itself takes about a second.
+  read(srcSize[0], srcSize[1], null, pts.map(p => [Math.round(p.x), Math.round(p.y)]));
+});
+
+$("again").addEventListener("click", async () => {
+  $("shot").classList.add("hidden"); $("again").classList.add("hidden");
+  $("framePanel").classList.add("hidden");
+  $("out").classList.add("hidden"); $("msg").textContent = "";
+  $("jsonRow").classList.add("hidden");
+  $("raw").classList.add("hidden"); $("showJson").textContent = "Show JSON";
+  if(!(await startCam())) $("pick").classList.remove("hidden");
+});
+
+async function read(w, h, flat, quad){
+  $("msg").textContent = "reading…"; $("msg").className = "msg";
+  try{
+    // the whole frame is sent: the server finds the card, orients it and locks
+    // the crop on the machine-readable zone
+    const r = await fetch("/read", { method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ image: flat || shotUrl, auto_orient:true, version:"v1",
+                             enhance:"none", source_size:[w, h],
+                             ...(quad ? { quad } : {}) }) });
+    const j = await r.json();
+    if(j.error) throw new Error(j.error);
+    if(j.blocked){ $("msg").textContent = j.message; $("msg").className = "msg bad"; return; }
+    lastResult = j;
+    render(j);
+    $("msg").textContent = `read in ${j.seconds}s`; $("msg").className = "msg ok";
+  }catch(e){
+    $("msg").textContent = "failed: " + e.message; $("msg").className = "msg bad";
+  }
+}
+
+const LABEL = {
+  id_number:"ID number", name_khmer:"Name (Khmer)", name_latin:"Name (Latin)",
+  dob_sex_height:"Birth / sex / height", place_of_birth:"Place of birth",
+  address_line1:"Address", address_line2:"Address (cont.)",
+  validity:"Validity", distinguishing_marks:"Distinguishing marks" };
+
+function row(k, v, flag){
+  const pill = flag === undefined ? ""
+    : `<span class="pill ${flag ? "y" : "n"}">${flag ? "verified" : "unverified"}</span>`;
+  return `<div class="f"><div class="k">${k}</div><div class="v">${v || "—"}${pill}</div></div>`;
+}
+
+function render(j){
+  const f = j.fields || {}, m = j.mrz || {};
+  let html = "";
+  for(const key in LABEL) if(f[key] !== undefined) html += row(LABEL[key], f[key]);
+  html += row("MRZ", `${j.mrz_confidence}/11`, j.mrz_confidence >= 11);
+  html += row("Document number", m.document_number?.value, m.document_number?.verified);
+  html += row("Name", `${m.surname?.value || ""} ${m.given_names?.value || ""}`.trim(),
+              j.name_verified);
+  html += row("Date of birth", m.date_of_birth?.value, m.date_of_birth?.verified);
+  html += row("Sex", m.sex?.value, m.sex?.verified);
+  html += row("Expiry", m.date_of_expiry?.value,
+              m.date_of_expiry?.verified || m.date_of_expiry?.derived);
+  const a = (j.address || {}).address;
+  if(a) html += row("Address match",
+    a.verified ? [a.village, a.commune, a.district, a.province].filter(Boolean).join(" · ")
+               : "no match", a.verified);
+  $("out").innerHTML = html;
+  $("out").classList.remove("hidden");
+  $("jsonRow").classList.remove("hidden");
+  // the captured image is megabytes of base64 and nobody wants it on the
+  // clipboard; everything else goes
+  const { card_png, ...rest } = lastResult || {};
+  $("raw").textContent = JSON.stringify(rest, null, 2);
+}
+
+$("showJson").addEventListener("click", () => {
+  const r = $("raw"), shown = !r.classList.contains("hidden");
+  r.classList.toggle("hidden", shown);
+  $("showJson").textContent = shown ? "Show JSON" : "Hide JSON";
+});
+
+$("copyJson").addEventListener("click", async () => {
+  const text = $("raw").textContent;
+  const done = ok => {
+    $("copyJson").textContent = ok ? "Copied" : "Copy failed";
+    setTimeout(() => { $("copyJson").textContent = "Copy JSON"; }, 1400);
+  };
+  try{
+    // the async clipboard needs a secure page; over plain http fall back to
+    // the old selection trick, which still works on iOS Safari
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(text); done(true); return;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+    document.body.appendChild(ta);
+    ta.select(); ta.setSelectionRange(0, text.length);
+    done(document.execCommand("copy"));
+    document.body.removeChild(ta);
+  }catch(e){ done(false); }
+});
+
+(async () => {
+  if(!(await startCam())){
+    $("pick").classList.remove("hidden");
+    $("foot").textContent = secure
+      ? "camera unavailable — using the phone's camera app"
+      : "page served over plain http, so the live frame is off — "
+        + "using the phone's camera app";
+  }
+})();
+</script>
+</body>
+</html>

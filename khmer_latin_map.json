@@ -1,0 +1,59 @@
+{
+  "_note": "Khmer consonant -> the Latin letters it is written with in names. Supplied by Vattanac, 20 Sep 2026. Both series collapse to one letter (គ and ក are both K); aspiration collapses again at comparison time, because Cambodian romanisation is not standardised (សុខ is SOK, not SOKH). អ is a vowel carrier and contributes nothing.",
+  "consonants": {
+    "ក": "K",
+    "ខ": "KH",
+    "គ": "K",
+    "ឃ": "KH",
+    "ង": "NG",
+    "ច": "CH",
+    "ឆ": "CH",
+    "ជ": "CH",
+    "ឈ": "CH",
+    "ញ": "NY",
+    "ដ": "D",
+    "ឋ": "TH",
+    "ឌ": "D",
+    "ឍ": "TH",
+    "ណ": "N",
+    "ត": "T",
+    "ថ": "TH",
+    "ទ": "T",
+    "ធ": "TH",
+    "ន": "N",
+    "ប": "B",
+    "ផ": "PH",
+    "ព": "P",
+    "ភ": "PH",
+    "ម": "M",
+    "យ": "Y",
+    "រ": "R",
+    "ល": "L",
+    "វ": "V",
+    "ស": "S",
+    "ហ": "H",
+    "ឡ": "L",
+    "ឝ": "SH",
+    "អ": ""
+  },
+  "nikahit": {
+    "ំ": "M",
+    "_note": "U+17C6 is the M of SAMNANG in សំណាង"
+  },
+  "aspiration_collapse": {
+    "KH": "K",
+    "TH": "T",
+    "PH": "P",
+    "NY": "N",
+    "SH": "S"
+  },
+  "digraphs": [
+    "KH",
+    "CH",
+    "TH",
+    "PH",
+    "NG",
+    "NY",
+    "SH"
+  ]
+}

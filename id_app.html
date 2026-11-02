@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Khmer ID Reader</title>
+<style>
+  :root{
+    --bg:#f6f5f2; --panel:#fffefb; --ink:#1c1a17; --muted:#6b665e;
+    --line:#ddd8cf; --accent:#b4541f; --accent-soft:#f3e2d8; --ok:#2f6b46; --ok-soft:#e8f1ea;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;padding:28px 16px}
+  .wrap{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  h1{font-size:24px;margin:0;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:4px 0 0;max-width:64ch}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+  .steps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .step{font-size:13px;padding:5px 11px;border-radius:99px;border:1px solid var(--line);color:var(--muted);background:#fff}
+  .step.on{background:var(--accent-soft);border-color:#e0c3b2;color:var(--accent);font-weight:600}
+  .step.done{background:var(--ok-soft);border-color:#cfe0d3;color:var(--ok)}
+  .drop{display:block;border:2px dashed var(--line);border-radius:10px;padding:34px 18px;text-align:center;
+    color:var(--muted);cursor:pointer;transition:border-color .15s,background .15s}
+  .drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .drop strong{color:var(--ink)}
+  input[type=file]{display:none}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  button{font:inherit;font-weight:600;padding:8px 15px;border-radius:7px;cursor:pointer;
+    border:1px solid var(--accent);background:var(--accent);color:#fff}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line);font-weight:500}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .status{font-size:13.5px;color:var(--muted)}
+  .status.ok{color:var(--ok)} .status.bad{color:var(--accent)}
+  canvas{max-width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;
+    cursor:crosshair;touch-action:none;display:block}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:720px){.grid{grid-template-columns:1fr}}
+  .card img{width:100%;border:1px solid var(--line);border-radius:6px;display:block}
+  .meta{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:8px}
+  table{border-collapse:collapse;width:100%;font-size:14.5px}
+  th,td{text-align:left;padding:8px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-weight:600;color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.05em}
+  td.kh{font-size:16.5px}
+  td.val{font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;font-size:12px;padding:2px 9px;border-radius:99px;
+    background:var(--ok-soft);color:var(--ok);border:1px solid #cfe0d3;white-space:nowrap}
+  .pill.bad{background:#fbeee7;color:var(--accent);border-color:#ecc9b7}
+  h2{font-size:15px;margin:0 0 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .hidden{display:none}
+  .note{border-left:3px solid var(--ok);padding-left:12px;color:var(--muted);font-size:13.5px}
+  .hint{font-size:13.5px;color:var(--muted);margin:8px 0 0}
+  pre{font-size:12.5px;background:#faf8f4;border:1px solid var(--line);border-radius:7px;padding:10px;overflow:auto;margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Khmer ID Reader</h1>
+    <p class="sub">Upload a photo of a Cambodian national ID card. The card is found and shown
+    with a frame you can adjust, then straightened, oriented and read. Machine-readable fields
+    are verified against their check digits; Khmer fields are read by the model.</p>
+  </header>
+
+  <div class="panel">
+    <div class="steps">
+      <span class="step on" id="s1">1 · Photo</span>
+      <span class="step" id="s2">2 · Check the frame</span>
+      <span class="step" id="s3">3 · Result</span>
+    </div>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="image/*">
+      <strong>Drop a photo here</strong> or click to choose one<br>
+      <span style="font-size:13px">Lay the card flat, fill most of the frame, avoid glare.</span>
+    </label>
+    <div class="row" style="margin-top:12px">
+      <button class="ghost" id="camBtn">Use the webcam</button>
+      <span class="status" id="camHint" style="margin-left:4px"></span>
+    </div>
+    <div class="hidden" id="camPanel" style="margin-top:12px">
+      <video id="cam" playsinline muted
+             style="width:100%;max-width:720px;border-radius:8px;background:#000"></video>
+      <p class="hint" style="margin:8px 0">Hold the card so it fills the frame. A laptop camera
+        gives about 1280 px across, so a card filling half the view leaves too little
+        resolution for the machine-readable zone.</p>
+      <div class="row">
+        <button id="shotBtn">Take the photo</button>
+        <button class="ghost" id="camOff">Turn the camera off</button>
+        <label style="margin-left:auto;font-size:14px;opacity:.85">
+          Camera
+          <select id="camPick" style="margin-left:6px;padding:4px 6px;max-width:260px"></select>
+        </label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px;justify-content:space-between">
+      <span class="status" id="status">server: checking…</span>
+      <span class="status" id="msg"></span>
+    </div>
+    <p class="note" style="margin:12px 0 0">The photo is sent only to the model server on this
+      computer (127.0.0.1) and is not stored.</p>
+  </div>
+
+  <div class="panel hidden" id="framePanel">
+    <strong>Is the frame on the card?</strong>
+    <p class="hint" id="frameHint">Drag any corner to fix it. The frame should sit on the card's
+      edges, not on the text.</p>
+    <canvas id="src"></canvas>
+    <p class="status" id="sharp" style="margin:10px 0 0"></p>
+    <div class="row" style="margin-top:12px">
+      <button id="readBtn">Frame is right, read the card</button>
+      <button class="ghost" id="redetect">Detect again</button>
+      <button class="ghost" id="fullFrame">Use whole photo</button>
+      <label style="font-size:14px;opacity:.85">
+        Detector
+        <select id="detector" style="margin-left:6px;padding:4px 6px">
+          <option value="auto" selected>Auto</option>
+          <option value="contour">Card edges</option>
+          <option value="text">Text density</option>
+        </select>
+      </label>
+      <label style="margin-left:auto;font-size:14px;opacity:.85">
+        Clean-up
+        <select id="enhance" style="margin-left:6px;padding:4px 6px">
+          <option value="none" selected>None</option>
+          <option value="gray">Grayscale</option>
+          <option value="contrast">High contrast</option>
+        </select>
+      </label>
+      <label style="font-size:14px;opacity:.85">
+        Mode
+        <select id="version" style="margin-left:6px;padding:4px 6px">
+          <option value="v2" selected>Version 2 &mdash; check image quality first</option>
+          <option value="v1">Version 1 &mdash; read anything</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="grid hidden" id="results">
+    <div class="panel card">
+      <h2>Card as read</h2>
+      <img id="cardImg" alt="flattened card">
+      <div class="meta">
+        <span id="mFound"></span><span id="mRot"></span><span id="mConf"></span><span id="mTime"></span>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Machine-readable zone</h2>
+      <table id="mrzTbl"><thead><tr><th>Field</th><th>Value</th><th></th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="panel" style="grid-column:1 / -1">
+      <h2>Khmer fields</h2>
+      <table id="fieldTbl"><thead><tr><th style="width:26%">Field</th><th>Text</th></tr></thead><tbody></tbody></table>
+      <div class="row" style="margin-top:12px">
+        <button class="ghost" id="copyJson">Copy as JSON</button>
+        <button class="ghost" id="toggleRaw">Show raw MRZ read</button>
+        <button class="ghost" id="again">Read another card</button>
+      </div>
+      <pre id="raw" class="hidden"></pre>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const CARD_W = 1200, CARD_H = 757;
+let img = null, photoUrl = null, pts = [], dragging = -1, viewScale = 1, method = "", last = null;
+// the ORIGINAL file size, before the 1600 px downscale below: the quality
+// gate must judge the photo the user took, not the copy we shrank
+let srcW = 0, srcH = 0;
+const srcCv = $("src"), sctx = srcCv.getContext("2d");
+
+function step(n){
+  ["s1","s2","s3"].forEach((id,i) => {
+    $(id).className = "step" + (i+1 === n ? " on" : i+1 < n ? " done" : "");
+  });
+}
+
+async function ping(){
+  const el = $("status");
+  try{
+    const j = await (await fetch("/ping", {cache:"no-store"})).json();
+    el.textContent = `model: ready on ${j.device}, ${j.lm ? "beam search + LM" : "greedy decoding"}`;
+    el.className = "status ok"; return true;
+  }catch(e){
+    el.textContent = "model server not reachable"; el.className = "status bad"; return false;
+  }
+}
+ping();
+
+/* ---------- 1. photo ---------- */
+const drop = $("drop"), file = $("file");
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if(f) handle(f); });
+file.addEventListener("change", e => { const f = e.target.files[0]; if(f) handle(f); file.value = ""; });
+
+/* ---------- 1b. webcam ---------- */
+let camStream = null;
+
+async function listCams(selected){
+  // labels are blank until permission has been granted once, so this is
+  // called again after the first successful getUserMedia
+  const devs = (await navigator.mediaDevices.enumerateDevices())
+    .filter(d => d.kind === "videoinput");
+  const sel = $("camPick");
+  sel.innerHTML = "";
+  devs.forEach((d, i) => {
+    const o = document.createElement("option");
+    o.value = d.deviceId;
+    o.textContent = d.label || `Camera ${i + 1}`;
+    // an iPhone over Continuity Camera is the sharpest option by far, and the
+    // machine-readable zone is what needs the pixels, so prefer it
+    if(!selected && /iphone|continuity|back|rear/i.test(o.textContent)) o.selected = true;
+    if(d.deviceId === selected) o.selected = true;
+    sel.appendChild(o);
+  });
+  return devs;
+}
+
+async function camStart(deviceId){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    $("camHint").textContent = "this browser has no camera API"; return;
+  }
+  try{
+    if(camStream){ camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+    // ask for the largest frame the camera will give: the card has to survive
+    // being only part of the view
+    const video = { width: { ideal: 3840 }, height: { ideal: 2160 } };
+    if(deviceId) video.deviceId = { exact: deviceId };
+    camStream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+    const v = $("cam");
+    v.srcObject = camStream; await v.play();
+    const t = camStream.getVideoTracks()[0].getSettings();
+    await listCams(t.deviceId);
+    $("camHint").textContent = `${$("camPick").selectedOptions[0]?.textContent || "camera"} · ${t.width}x${t.height}`;
+    $("camPanel").classList.remove("hidden");
+  }catch(e){
+    // Safari and Chrome both refuse the camera outside a secure context;
+    // 127.0.0.1 counts as one, "localhost" spellings sometimes do not
+    $("camHint").textContent = "camera refused: " + e.message;
+  }
+}
+
+function camStop(){
+  if(camStream){ camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  $("camPanel").classList.add("hidden");
+  $("camHint").textContent = "";
+}
+
+$("camBtn").addEventListener("click", async () => {
+  if(camStream){ camStop(); return; }
+  await listCams();
+  await camStart($("camPick").value || undefined);
+});
+$("camPick").addEventListener("change", () => camStart($("camPick").value));
+$("camOff").addEventListener("click", camStop);
+
+$("shotBtn").addEventListener("click", () => {
+  const v = $("cam");
+  if(!v.videoWidth) return;
+  const c = document.createElement("canvas");
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0);
+  srcW = c.width; srcH = c.height;          // the true capture size, for the quality gate
+  photoUrl = c.toDataURL("image/jpeg", 0.95);
+  camStop();
+  img = new Image();
+  img.onload = () => { $("results").classList.add("hidden"); detect(); };
+  img.src = photoUrl;
+});
+
+function handle(f){
+  const rd = new FileReader();
+  rd.onload = () => {
+    const im = new Image();
+    im.onload = () => {
+      srcW = im.width; srcH = im.height;
+      // phones produce 12-megapixel files; 1600 px on the long side loses nothing here
+      const k = Math.min(1, 1600 / Math.max(im.width, im.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+      photoUrl = c.toDataURL("image/jpeg", 0.92);
+      img = new Image();
+      img.onload = () => { $("results").classList.add("hidden"); detect(); };
+      img.src = photoUrl;
+    };
+    im.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+}
+
+/* ---------- 2. frame ---------- */
+async function detect(){
+  $("msg").textContent = "finding the card…"; $("msg").className = "status";
+  showFrame([[0,0],[img.width-1,0],[img.width-1,img.height-1],[0,img.height-1]], "…");
+  try{
+    const r = await fetch("/detect", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ image: photoUrl,
+                             detector: ($("detector") || {}).value || "auto" }) });
+    const j = await r.json();
+    if(j.error) throw new Error(j.error);
+    method = j.method;
+    showFrame(j.quad, j.method);
+    sharpnessNote(j.sharpness, j.sharpness_verdict);
+    $("msg").textContent = "";
+  }catch(e){
+    $("msg").textContent = "could not detect: " + e.message; $("msg").className = "status bad";
+  }
+}
+
+function sharpnessNote(s, v){
+  const el = $("sharp"); if(s === undefined){ el.textContent = ""; return; }
+  const n = Math.round(s);
+  if(v === "ok"){ el.textContent = `Sharpness ${n}: good.`; el.className = "status ok";
+    $("readBtn").textContent = "Frame is right, read the card"; }
+  else if(v === "low"){ el.textContent = `Sharpness ${n}: a little soft. Some fields may not verify; a sharper photo would help.`;
+    el.className = "status"; $("readBtn").textContent = "Read anyway"; }
+  else { el.textContent = `Sharpness ${n}: too blurry to trust. Please take another photo, closer and in better light.`;
+    el.className = "status bad"; $("readBtn").textContent = "Read anyway (not recommended)"; }
+}
+
+function showFrame(quad, how){
+  viewScale = Math.min(1, 960 / img.width);
+  srcCv.width = Math.round(img.width * viewScale);
+  srcCv.height = Math.round(img.height * viewScale);
+  pts = quad.map(p => ({ x: p[0]*viewScale, y: p[1]*viewScale }));
+  $("framePanel").classList.remove("hidden");
+  const explain = { "text+mrz": "Card found by its text and locked onto the machine-readable zone.",
+    "text": "Card found by its text; the machine-readable zone could not be located, so check the frame carefully.",
+    "contrast": "Card found by contrast with the background.",
+    "none": "The card could not be found. Drag the corners onto it.", "…": "" }[how] || "";
+  $("frameHint").textContent = explain + " Drag any corner to fix it.";
+  drawSrc();
+  $("framePanel").scrollIntoView({ behavior:"smooth", block:"start" });
+  step(2);
+}
+
+function drawSrc(){
+  sctx.clearRect(0,0,srcCv.width,srcCv.height);
+  sctx.drawImage(img,0,0,srcCv.width,srcCv.height);
+  // dim everything outside the frame
+  sctx.save();
+  sctx.fillStyle = "rgba(0,0,0,.28)";
+  sctx.beginPath(); sctx.rect(0,0,srcCv.width,srcCv.height);
+  sctx.moveTo(pts[0].x,pts[0].y); for(let i=3;i>=1;i--) sctx.lineTo(pts[i].x,pts[i].y); sctx.closePath();
+  sctx.fill("evenodd"); sctx.restore();
+  // bright green: the frame sits on ID cards that are themselves brown, grey
+  // or cream, and the old terracotta line disappeared against several of them
+  sctx.strokeStyle = "#00e05a"; sctx.lineWidth = 3;
+  sctx.shadowColor = "rgba(0,0,0,.65)"; sctx.shadowBlur = 4;
+  sctx.beginPath(); pts.forEach((p,i)=> i ? sctx.lineTo(p.x,p.y) : sctx.moveTo(p.x,p.y));
+  sctx.closePath(); sctx.stroke();
+  pts.forEach(p => { sctx.fillStyle = "#fff"; sctx.beginPath(); sctx.arc(p.x,p.y,10,0,7); sctx.fill();
+    sctx.fillStyle = "#00e05a"; sctx.beginPath(); sctx.arc(p.x,p.y,7,0,7); sctx.fill(); });
+  sctx.shadowBlur = 0;
+}
+
+function cvPos(cv, e){
+  const r = cv.getBoundingClientRect();
+  return { x:(e.clientX - r.left) * cv.width / r.width, y:(e.clientY - r.top) * cv.height / r.height };
+}
+srcCv.addEventListener("pointerdown", e => {
+  const p = cvPos(srcCv, e);
+  dragging = pts.findIndex(q => Math.hypot(q.x-p.x, q.y-p.y) < 18);
+  if(dragging >= 0) srcCv.setPointerCapture(e.pointerId);
+});
+srcCv.addEventListener("pointermove", e => { if(dragging < 0) return; pts[dragging] = cvPos(srcCv, e); drawSrc(); });
+srcCv.addEventListener("pointerup", () => { dragging = -1; });
+$("detector").addEventListener("change", () => detect());
+$("redetect").addEventListener("click", detect);
+$("fullFrame").addEventListener("click", () =>
+  showFrame([[0,0],[img.width-1,0],[img.width-1,img.height-1],[0,img.height-1]], "none"));
+
+/* ---------- warp (destination -> source homography, sampled backwards) ---------- */
+function solve(A, b){
+  const n = b.length;
+  for(let i=0;i<n;i++){
+    let piv = i; for(let r=i+1;r<n;r++) if(Math.abs(A[r][i]) > Math.abs(A[piv][i])) piv = r;
+    [A[i],A[piv]] = [A[piv],A[i]]; [b[i],b[piv]] = [b[piv],b[i]];
+    const d = A[i][i] || 1e-12;
+    for(let r=i+1;r<n;r++){ const f = A[r][i]/d; for(let c=i;c<n;c++) A[r][c] -= f*A[i][c]; b[r] -= f*b[i]; }
+  }
+  const x = new Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){ let s = b[i]; for(let c=i+1;c<n;c++) s -= A[i][c]*x[c]; x[i] = s/(A[i][i] || 1e-12); }
+  return x;
+}
+function homography(dst, src){
+  const A = [], b = [];
+  for(let i=0;i<4;i++){
+    const {x:u,y:v} = dst[i], {x:X,y:Y} = src[i];
+    A.push([u,v,1,0,0,0,-u*X,-v*X]); b.push(X);
+    A.push([0,0,0,u,v,1,-u*Y,-v*Y]); b.push(Y);
+  }
+  const h = solve(A,b); h.push(1); return h;
+}
+function orderPts(p){
+  const cx = p.reduce((s,q)=>s+q.x,0)/4, cy = p.reduce((s,q)=>s+q.y,0)/4;
+  let a = [...p].sort((u,v)=> Math.atan2(u.y-cy,u.x-cx) - Math.atan2(v.y-cy,v.x-cx));
+  let area = 0; for(let i=0;i<4;i++){ const q=a[i], r=a[(i+1)%4]; area += q.x*r.y - r.x*q.y; }
+  if(area < 0) a.reverse();
+  let start = 0, best = Infinity; a.forEach((q,i)=>{ if(q.x+q.y < best){ best=q.x+q.y; start=i; } });
+  return [0,1,2,3].map(i => a[(start+i)%4]);
+}
+function warpCard(){
+  let s = orderPts(pts.map(p => ({ x:p.x/viewScale, y:p.y/viewScale })));
+  // a card lying vertically: map its long side to the card's long side
+  const wTop = Math.hypot(s[1].x-s[0].x, s[1].y-s[0].y), hLeft = Math.hypot(s[3].x-s[0].x, s[3].y-s[0].y);
+  if(hLeft > wTop) s = [s[1], s[2], s[3], s[0]];          // rotate assignment by one corner
+  const dst = [{x:0,y:0},{x:CARD_W-1,y:0},{x:CARD_W-1,y:CARD_H-1},{x:0,y:CARD_H-1}];
+  const h = homography(dst, s);
+  const tmp = document.createElement("canvas"); tmp.width = img.width; tmp.height = img.height;
+  const tctx = tmp.getContext("2d", { willReadFrequently:true }); tctx.drawImage(img,0,0);
+  const S = tctx.getImageData(0,0,img.width,img.height).data, W = img.width, H = img.height;
+  const out = document.createElement("canvas"); out.width = CARD_W; out.height = CARD_H;
+  const octx = out.getContext("2d"); const od = octx.createImageData(CARD_W, CARD_H); const O = od.data;
+  for(let y=0;y<CARD_H;y++) for(let x=0;x<CARD_W;x++){
+    const w = h[6]*x + h[7]*y + h[8];
+    const sx = (h[0]*x + h[1]*y + h[2]) / w, sy = (h[3]*x + h[4]*y + h[5]) / w;
+    const o = (y*CARD_W + x)*4;
+    if(sx < 0 || sy < 0 || sx >= W-1 || sy >= H-1){ O[o]=O[o+1]=O[o+2]=235; O[o+3]=255; continue; }
+    const x0 = sx|0, y0 = sy|0, fx = sx-x0, fy = sy-y0;
+    for(let c=0;c<3;c++){
+      const p00 = S[(y0*W+x0)*4+c], p10 = S[(y0*W+x0+1)*4+c], p01 = S[((y0+1)*W+x0)*4+c], p11 = S[((y0+1)*W+x0+1)*4+c];
+      O[o+c] = (p00*(1-fx)+p10*fx)*(1-fy) + (p01*(1-fx)+p11*fx)*fy;
+    }
+    O[o+3] = 255;
+  }
+  octx.putImageData(od,0,0);
+  return out.toDataURL("image/png");
+}
+
+/* ---------- 3. read ---------- */
+$("readBtn").addEventListener("click", async () => {
+  if(!(await ping())) return;
+  $("msg").textContent = "reading…"; $("msg").className = "status";
+  $("readBtn").disabled = true;
+  try{
+    const flat = warpCard();
+    const version = ($("version") || {}).value || "v2";
+    const r = await fetch("/read", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ image: flat, auto_orient: true, version,
+                             enhance: ($("enhance") || {}).value || "none",
+                             source_size: [srcW, srcH] }) });
+    const j = await r.json();
+    if(j.error) throw new Error(j.error);
+    if(j.blocked){
+      $("msg").textContent = "Image not good enough: " + j.message +
+        "  (switch to Version 1 to read it anyway)";
+      $("msg").className = "status bad";
+      return;
+    }
+    last = j; render(j);
+    const warn = (j.quality && j.quality.reasons && j.quality.reasons.length)
+      ? "  \u2014 " + j.quality.reasons.join(" ") : "";
+    $("msg").textContent = `done in ${j.seconds}s${warn}`;
+    $("msg").className = warn ? "status" : "status ok";
+  }catch(e){
+    $("msg").textContent = "failed: " + e.message; $("msg").className = "status bad";
+  }finally{ $("readBtn").disabled = false; }
+});
+
+const LABELS = { document_number:"ID number", surname:"Surname", given_names:"Given names",
+  date_of_birth:"Date of birth", sex:"Sex", date_of_expiry:"Expiry", nationality:"Nationality" };
+const FIELD_LABELS = { id_number:"ID number (printed)", name_khmer:"Name (Khmer)", name_latin:"Name (Latin)",
+  dob_sex_height:"Birth date · sex · height", place_of_birth:"Place of birth", address_line1:"Address",
+  address_line2:"Address (cont.)", validity:"Validity", distinguishing_marks:"Distinguishing marks" };
+
+function render(j){
+  $("cardImg").src = j.card_png;
+  $("mFound").textContent = "frame: " + method;
+  $("mRot").textContent = "rotation: " + (j.rotation_applied ?? 0) + "°";
+  $("mConf").textContent = "MRZ confidence: " + (j.mrz_confidence ?? "–") + "/11 (" + (j.mrz.source || "model") + ")";
+  $("mTime").textContent = j.seconds + " s";
+  const mb = $("mrzTbl").querySelector("tbody"); mb.innerHTML = "";
+  for(const k of Object.keys(LABELS)){
+    const f = j.mrz[k]; if(!f) continue;
+    // an unverified name line is noise, not a name: say so instead of showing it
+    const isName = (k === "surname" || k === "given_names");
+    const shown = f.value ? f.value : (isName ? "not readable, see the Khmer name" : "");
+    mb.insertAdjacentHTML("beforeend", `<tr><td>${LABELS[k]}</td><td class="val">${esc(shown)}</td>` +
+      `<td><span class="pill ${f.verified ? "" : "bad"}">${f.verified ? "verified" : "unverified"}</span></td></tr>`);
+  }
+  mb.insertAdjacentHTML("beforeend", `<tr><td>Composite check</td><td></td><td><span class="pill ${j.mrz.composite_ok ? "" : "bad"}">` +
+    `${j.mrz.composite_ok ? "passes" : "fails"}</span></td></tr>`);
+  const fb = $("fieldTbl").querySelector("tbody"); fb.innerHTML = "";
+  const addrOk = { place_of_birth: j.address?.place_of_birth?.verified,
+                   address_line1: j.address?.address?.verified && j.address?.address?.village,
+                   address_line2: j.address?.address?.verified };
+  for(const [name, text] of Object.entries(j.fields || {})){
+    const pill = addrOk[name] === undefined ? "" :
+      `<span class="pill ${addrOk[name] ? "" : "bad"}">${addrOk[name] ? "gazetteer match" : "no match"}</span>`;
+    fb.insertAdjacentHTML("beforeend", `<tr><td>${esc(FIELD_LABELS[name] || name)}</td><td class="kh">${esc(text)} ${pill}</td></tr>`);
+  }
+  $("raw").textContent = "model:\n" + (j.mrz.raw_lines || []).join("\n") +
+    (j.mrz.raw_lines_tesseract ? "\n\ntesseract:\n" + j.mrz.raw_lines_tesseract.join("\n") : "");
+  $("results").classList.remove("hidden");
+  $("results").scrollIntoView({ behavior:"smooth", block:"start" });
+  step(3);
+}
+
+$("toggleRaw").addEventListener("click", () => {
+  const p = $("raw"); p.classList.toggle("hidden");
+  $("toggleRaw").textContent = p.classList.contains("hidden") ? "Show raw MRZ read" : "Hide raw MRZ read";
+});
+$("copyJson").addEventListener("click", async () => {
+  if(!last) return; const { card_png, ...rest } = last;
+  try{ await navigator.clipboard.writeText(JSON.stringify(rest, null, 2));
+       $("copyJson").textContent = "Copied"; setTimeout(() => $("copyJson").textContent = "Copy as JSON", 1400); }
+  catch(e){ alert("Could not copy"); }
+});
+$("again").addEventListener("click", () => {
+  $("results").classList.add("hidden"); $("framePanel").classList.add("hidden");
+  step(1); window.scrollTo({ top:0, behavior:"smooth" });
+});
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+</script>
+</body>
+</html>
