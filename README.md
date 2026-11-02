@@ -1,23 +1,31 @@
----
-title: Khmer National ID Card Reader
-emoji: 📋
-colorFrom: blue
-colorTo: indigo
-sdk: gradio
-sdk_version: "5.23.0"
-app_file: app.py
-pinned: false
-license: apache-2.0
----
+# 🇰🇭 Khmer National ID Card Reader
 
-# Khmer National ID Card Reader
+OCR-powered reader for Cambodian national ID cards. Upload a photo, adjust the card frame, and extract all fields including MRZ.
 
-Upload a photo of a Cambodian national ID card, adjust the corner frame, and extract all fields using OCR.
+## Quick Start
 
-Features:
-- Auto card detection with manual corner adjustment
-- Khmer + Latin text recognition
-- MRZ parsing with check-digit verification
-- Name cross-verification
+```bash
+docker run -p 8765:8765 ghcr.io/vattanac/khmer-id-reader:latest
+```
 
-📦 `pip install khmer-id-reader`
+Then open [http://localhost:8765](http://localhost:8765)
+
+| Page | URL | Description |
+|------|-----|-------------|
+| Desktop | `http://localhost:8765/` | Upload UI with corner-drag canvas |
+| Mobile | `http://localhost:8765/m` | Phone-friendly camera UI |
+
+## Features
+
+- **Frontend**: Desktop and mobile web UI with canvas-based 4-corner adjustment
+- **Backend**: Python HTTP server with CRNN-CTC OCR engine
+- Auto card edge detection with perspective warp
+- Beam search with Khmer language model
+- MRZ reading with check-digit verification
+- Khmer and Latin field extraction
+- Works offline — model weights bundled in the image
+
+## Links
+
+- [Model on HuggingFace](https://huggingface.co/vattanac/khmer-ocr-crnn-ctc)
+- [GitHub](https://github.com/vattanac/khmer-id-reader)
